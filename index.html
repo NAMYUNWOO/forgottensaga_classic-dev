@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <!-- COOP/COEP for SharedArrayBuffer (love.js normal mode 요구). -->
-    <script src="coi-serviceworker.js?v=20260511171525"></script>
+    <script src="coi-serviceworker.js?v=20260511173722"></script>
     <meta charset="utf-8">
     <!-- Cache 차단 — 새 deploy 즉시 사용자에게 fresh HTML 전달.
          CDN max-age 600s 의존 X. 매 진입 시 fresh fetch → 새 ?v= cache busting hash
@@ -14,10 +14,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <title>포가튼사가</title>
-    <link rel="icon" type="image/png" href="favicon.png?v=20260511171525">
-    <link rel="stylesheet" type="text/css" href="theme/love.css?v=20260511171525">
-    <link rel="stylesheet" type="text/css" href="mobile_input.css?v=20260511171525">
-    <link rel="stylesheet" type="text/css" href="save_controls.css?v=20260511171525">
+    <link rel="icon" type="image/png" href="favicon.png?v=20260511173722">
+    <link rel="stylesheet" type="text/css" href="theme/love.css?v=20260511173722">
+    <link rel="stylesheet" type="text/css" href="mobile_input.css?v=20260511173722">
+    <link rel="stylesheet" type="text/css" href="save_controls.css?v=20260511173722">
     <style>
       html, body {
         margin: 0; padding: 0;
@@ -490,7 +490,14 @@
         } catch (e) { callback([]); }
       }
 
+      // preRun 진단 logging — 디버그로그 탭에 visible 하도록 __logPush 도 호출
+      function _preRunLog(msg) {
+        try { console.log(msg); } catch (e) {}
+        if (window.__logPush) { try { window.__logPush(msg, false); } catch (e) {} }
+      }
+
       function preRunInjectUploads() {
+        _preRunLog('[preRun] start');
         // emscripten 의 async 처리 — IDB read 완료까지 dependency 추가
         if (Module.addRunDependency) Module.addRunDependency('user_saves');
         var done = false;
@@ -500,6 +507,7 @@
         }
         // 1. IDB 에서 sav read (async)
         _readUserSavesFromIDB(function(idbItems) {
+          _preRunLog('[preRun] IDB user_saves count=' + (idbItems && idbItems.length || 0));
           try {
             _injectPendingSaves(idbItems);
           } catch (e) { console.warn('[preRun] inject after IDB:', e); }
@@ -543,8 +551,8 @@
             }
           } catch (e) { console.warn('[preRun] localStorage error:', e); }
 
+          _preRunLog('[preRun] pending count=' + pending.length);
           if (!pending.length) return;
-          console.log('[preRun] pending count:', pending.length);
           try {
           for (var i = 0; i < pending.length; i++) {
             var item = pending[i];
@@ -572,9 +580,9 @@
                 console.warn('[preRun] MEMFS inject API 없음');
                 return;
               }
-              console.log('[preRun] sav inject:', item.path, u8.length, 'bytes');
+              _preRunLog('[preRun] sav inject path=' + item.path + ' bytes=' + u8.length);
             } catch (e) {
-              console.warn('[preRun] inject 실패:', item.path, e);
+              _preRunLog('[preRun] inject 실패: ' + item.path + ' err=' + (e.message || e));
             }
           }
           } catch (e) {
@@ -819,8 +827,8 @@
 
       var applicationLoad = function(e) { Love(Module); };
     </script>
-    <script type="text/javascript" src="nipplejs.min.js?v=20260511171525"></script>
-    <script type="text/javascript" src="mobile_input.js?v=20260511171525"></script>
+    <script type="text/javascript" src="nipplejs.min.js?v=20260511173722"></script>
+    <script type="text/javascript" src="mobile_input.js?v=20260511173722"></script>
     <script type="text/javascript">
       // 비-Chromium 브라우저 안내. UA 검사: Chrome/CriOS 면 OK, Edg/OPR/SamsungBrowser
       // 같은 Chromium 변형도 OK 처리 (love.js 호환성 비슷). Firefox/Safari/iOS Safari 만 안내.
@@ -840,8 +848,8 @@
         } catch (e) {}
       })();
     </script>
-    <script type="text/javascript" src="save_controls.js?v=20260511171525"></script>
-    <script type="text/javascript" src="game.js?v=20260511171525"></script>
-    <script async type="text/javascript" src="love.js?v=20260511171525" onload="applicationLoad(this)"></script>
+    <script type="text/javascript" src="save_controls.js?v=20260511173722"></script>
+    <script type="text/javascript" src="game.js?v=20260511173722"></script>
+    <script async type="text/javascript" src="love.js?v=20260511173722" onload="applicationLoad(this)"></script>
   </body>
 </html>

@@ -306,35 +306,19 @@ const MobileInput = (() => {
       const k = el.dataset.key;
       if (k) bindButton(el, k);
     });
-    // 키보드 토글 — PC 에서도 visible textbox 띄워서 한국어 입력 (OS IME) 가능.
-    // Mobile: focus 만 해도 가상 키보드 자동. PC: visible textbox 가 user 입력 확인.
+    // 키보드 토글 — 자체 가상 키보드 (window.VirtualKeyboard) 사용.
+    // OS 가상 키보드 의존 X → iOS/Android/BlueStacks 환경 무관 일관 동작.
+    // 기존 #mobile-ime textbox 는 호환용 hidden — 사용자에게 보이지 않음.
     const imeBtn = document.getElementById('btn-ime');
     if (imeBtn) {
       imeBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        const ime = document.getElementById('mobile-ime');
-        if (!ime) return;
-        if (ime.classList.contains('visible')) {
-          ime.classList.remove('visible');
-          imeBtn.classList.remove('active');
-          ime.blur();
-        } else {
-          ime.classList.add('visible');
-          imeBtn.classList.add('active');
-          ime.value = '';
-          if (ime._resetForwardState) ime._resetForwardState();
-          // small delay → CSS transition 적용 후 focus (mobile 가상 키보드 trigger)
-          setTimeout(() => ime.focus(), 30);
+        if (!window.VirtualKeyboard) {
+          console.warn('[MobileInput] VirtualKeyboard 미로드');
+          return;
         }
-      });
-      // ime input 외부 클릭 시 자동 hide (UX) — 단 ime 자체와 button 클릭은 제외.
-      document.addEventListener('mousedown', (e) => {
-        const ime = document.getElementById('mobile-ime');
-        if (!ime || !ime.classList.contains('visible')) return;
-        if (e.target === ime || e.target === imeBtn) return;
-        ime.classList.remove('visible');
-        imeBtn.classList.remove('active');
-        ime.blur();
+        window.VirtualKeyboard.toggle();
+        imeBtn.classList.toggle('active', window.VirtualKeyboard.isVisible());
       });
     }
     installIME();

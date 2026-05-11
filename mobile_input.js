@@ -60,13 +60,24 @@ const MobileInput = (() => {
   // SDL2 textinput 라우팅 — iOS / Android / BlueStacks 모두 동일 path 로 forward.
   // 1순위 emscripten ccall (Android), 2순위 emscripten hidden input simulate, 3순위
   // canvas InputEvent (iOS). 첫 successful method 캐시.
+  // emscripten ccall name 은 underscore 없이 호출 (emscripten 이 _ prefix 자동 추가).
   const FWD_CCALL_CANDIDATES = [
-    '_SDL_SendKeyboardText', 'SDL_SendKeyboardText',
-    '_emscripten_text_input', 'emscripten_text_input',
-    '_textinput',
+    'SDL_SendKeyboardText',
+    'SDL_TextInputEvent',
+    'emscripten_text_input',
+    'textinput',
   ];
   let _fwdMethod = null;
   let _emscriptenInput = null;
+  let _fwdDebugLogged = false;
+  // console.log + window.__logPush (설정 모달의 디버그로그 탭에서도 visible)
+  function _dbgLog() {
+    const args = Array.prototype.slice.call(arguments);
+    console.log.apply(console, args);
+    if (window.__logPush) {
+      try { window.__logPush(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '), false); } catch (e) {}
+    }
+  }
   function findEmscriptenInput() {
     if (_emscriptenInput && document.contains(_emscriptenInput)) return _emscriptenInput;
     const ours = document.getElementById('mobile-ime');
@@ -97,6 +108,32 @@ const MobileInput = (() => {
 
     function forwardChar(ch) {
       if (!ch) return;
+      // 디버그 첫 1 회: 시도 가능한 method 모두 분석 — 환경별 어느 path 가 valid 한지 확인
+      if (!_fwdDebugLogged) {
+        _fwdDebugLogged = true;
+        const M = window.Module;
+        _dbgLog('[forwardChar DEBUG] Module:', !!M, 'ccall:', !!(M && M.ccall));
+        if (M && M.ccall) {
+          for (const name of FWD_CCALL_CANDIDATES) {
+            // 실제 호출 없이 cwrap 으로 함수 존재 여부 확인 시도
+            try {
+              const fn = M.cwrap ? M.cwrap(name, null, ['string']) : null;
+              _dbgLog('[forwardChar DEBUG] cwrap', name, '→', !!fn);
+            } catch (e) {
+              _dbgLog('[forwardChar DEBUG] cwrap', name, 'err:', e.message);
+            }
+          }
+        }
+        const hidden = findEmscriptenInput();
+        _dbgLog('[forwardChar DEBUG] hiddenInput:', hidden ? (hidden.tagName + '#' + (hidden.id || '') + '.' + (hidden.className || '')) : 'none');
+        // 모든 input/textarea 나열
+        const all = document.querySelectorAll('input, textarea');
+        all.forEach((el, i) => {
+          const r = el.getBoundingClientRect();
+          const cs = window.getComputedStyle(el);
+          _dbgLog('[forwardChar DEBUG] el#' + i, el.tagName, 'id=' + el.id, 'size=' + Math.round(r.width) + 'x' + Math.round(r.height), 'opacity=' + cs.opacity, 'display=' + cs.display);
+        });
+      }
       // 1순위: emscripten SDL2 textinput export ccall (multiple candidate name 시도)
       if (window.Module && window.Module.ccall) {
         for (const name of FWD_CCALL_CANDIDATES) {
@@ -104,7 +141,7 @@ const MobileInput = (() => {
             window.Module.ccall(name, null, ['string'], [ch]);
             if (!_fwdMethod) {
               _fwdMethod = 'ccall:' + name;
-              console.log('[forwardChar] using', _fwdMethod);
+              _dbgLog('[forwardChar] using', _fwdMethod);
             }
             return;
           } catch (e) { /* try next */ }
@@ -118,7 +155,7 @@ const MobileInput = (() => {
           hidden.dispatchEvent(new Event('input', { bubbles: true }));
           if (!_fwdMethod) {
             _fwdMethod = 'hidden-input';
-            console.log('[forwardChar] using', _fwdMethod, hidden);
+            _dbgLog('[forwardChar] using', _fwdMethod, hidden);
           }
           return;
         } catch (e) { /* fallthrough */ }
@@ -129,7 +166,7 @@ const MobileInput = (() => {
       canvas.dispatchEvent(ev);
       if (!_fwdMethod) {
         _fwdMethod = 'canvas-inputEvent';
-        console.log('[forwardChar] using', _fwdMethod);
+        _dbgLog('[forwardChar] using', _fwdMethod);
       }
     }
     function appendVisible(text) {

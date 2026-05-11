@@ -57,35 +57,14 @@ const MobileInput = (() => {
     el.addEventListener('mouseleave', release);
   }
 
-  // SDL2 textinput candidate — Module 안 직접 함수 lookup 시도 (ccall/cwrap 없는 fork 호환).
-  const FWD_CCALL_CANDIDATES = [
-    'SDL_SendKeyboardText',
-    'SDL_TextInputEvent',
-    'emscripten_text_input',
-    'textinput',
-  ];
-  let _moduleKeysLogged = false;
+  // SDL2 textinput candidate — custom 빌드 love.js 가 _SDL_SendKeyboardText export.
+  // 첫 호출 시 사용 method 1 회 log (디버그).
+  let _fwdMethodLogged = false;
   function _dbg(msg) {
     try { console.log(msg); } catch (e) {}
     if (window.__logPush) {
       try { window.__logPush(msg, false); } catch (e) {}
     }
-  }
-  function logModuleKeys() {
-    if (_moduleKeysLogged) return;
-    _moduleKeysLogged = true;
-    const M = window.Module;
-    if (!M) { _dbg('[mod] Module 없음'); return; }
-    try {
-      const keys = Object.keys(M);
-      _dbg('[mod] total keys: ' + keys.length);
-      // function 인 key 만 추출 (textinput 후보)
-      const fns = keys.filter(k => typeof M[k] === 'function');
-      _dbg('[mod] function keys: ' + fns.join(' '));
-      // _ prefix function (emscripten exported C function)
-      const underscoreFns = fns.filter(k => k.startsWith('_'));
-      _dbg('[mod] _ prefix fns: ' + underscoreFns.join(' '));
-    } catch (e) { _dbg('[mod] err: ' + e.message); }
   }
 
   function installIME() {
@@ -95,38 +74,42 @@ const MobileInput = (() => {
 
     function forwardChar(ch) {
       if (!ch) return;
-      logModuleKeys();  // 첫 호출 시 1 회 Module 의 모든 function key 출력 (진단)
       const M = window.Module;
-      // 1순위: Module 안 직접 SDL2 textinput 함수 lookup
-      if (M) {
-        for (const name of FWD_CCALL_CANDIDATES) {
-          const fn = M['_' + name] || M[name];
-          if (typeof fn === 'function') {
-            try {
-              if (M.allocateUTF8 && M._free) {
-                const ptr = M.allocateUTF8(ch);
-                fn(ptr);
-                M._free(ptr);
-              } else {
-                fn(ch);
-              }
-              return;
-            } catch (e) { /* try next */ }
-          }
-        }
-      }
-      // 2순위: ccall
+      // 1순위: ccall('SDL_SendKeyboardText') — custom 빌드 love.js 에 export 됨.
+      // SDL2 의 internal API 로 textinput event 를 main thread 에 push → love.textinput.
       if (M && M.ccall) {
-        for (const name of FWD_CCALL_CANDIDATES) {
-          try { M.ccall(name, null, ['string'], [ch]); return; } catch (e) {}
-        }
+        try {
+          M.ccall('SDL_SendKeyboardText', null, ['string'], [ch]);
+          if (!_fwdMethodLogged) {
+            _fwdMethodLogged = true;
+            _dbg('[fwd] using ccall:SDL_SendKeyboardText');
+          }
+          return;
+        } catch (e) { /* fall through */ }
       }
-      // 3순위: 광범위 InputEvent dispatch (iOS Safari 동작 경로)
+      // 2순위: Module._SDL_SendKeyboardText 직접 호출 (ccall 없으면)
+      if (M && typeof M._SDL_SendKeyboardText === 'function' && M.allocateUTF8 && M._free) {
+        try {
+          const ptr = M.allocateUTF8(ch);
+          M._SDL_SendKeyboardText(ptr);
+          M._free(ptr);
+          if (!_fwdMethodLogged) {
+            _fwdMethodLogged = true;
+            _dbg('[fwd] using direct:_SDL_SendKeyboardText');
+          }
+          return;
+        } catch (e) { /* fall through */ }
+      }
+      // 3순위: 광범위 InputEvent dispatch (iOS Safari fallback — 기존 npm love.js 호환)
       const canvas = document.getElementById('canvas') || window;
       const targets = [canvas, document, window];
       try {
         const ev = new InputEvent('textinput', { data: ch, bubbles: true });
         for (const t of targets) { try { t.dispatchEvent(ev); } catch (e) {} }
+        if (!_fwdMethodLogged) {
+          _fwdMethodLogged = true;
+          _dbg('[fwd] using inputEvent-broad (custom love.js 미적용?)');
+        }
       } catch (e) {}
     }
     function forwardBackspace() {

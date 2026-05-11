@@ -58,13 +58,35 @@ const MobileInput = (() => {
   }
 
   // SDL2 textinput candidate — Module 안 직접 함수 lookup 시도 (ccall/cwrap 없는 fork 호환).
-  // emscripten 은 보통 _ prefix. 우리는 _ 와 non-_ 둘 다 시도.
   const FWD_CCALL_CANDIDATES = [
     'SDL_SendKeyboardText',
     'SDL_TextInputEvent',
     'emscripten_text_input',
     'textinput',
   ];
+  let _moduleKeysLogged = false;
+  function _dbg(msg) {
+    try { console.log(msg); } catch (e) {}
+    if (window.__logPush) {
+      try { window.__logPush(msg, false); } catch (e) {}
+    }
+  }
+  function logModuleKeys() {
+    if (_moduleKeysLogged) return;
+    _moduleKeysLogged = true;
+    const M = window.Module;
+    if (!M) { _dbg('[mod] Module 없음'); return; }
+    try {
+      const keys = Object.keys(M);
+      _dbg('[mod] total keys: ' + keys.length);
+      // function 인 key 만 추출 (textinput 후보)
+      const fns = keys.filter(k => typeof M[k] === 'function');
+      _dbg('[mod] function keys: ' + fns.join(' '));
+      // _ prefix function (emscripten exported C function)
+      const underscoreFns = fns.filter(k => k.startsWith('_'));
+      _dbg('[mod] _ prefix fns: ' + underscoreFns.join(' '));
+    } catch (e) { _dbg('[mod] err: ' + e.message); }
+  }
 
   function installIME() {
     const ime = document.getElementById('mobile-ime');
@@ -73,6 +95,7 @@ const MobileInput = (() => {
 
     function forwardChar(ch) {
       if (!ch) return;
+      logModuleKeys();  // 첫 호출 시 1 회 Module 의 모든 function key 출력 (진단)
       const M = window.Module;
       // 1순위: Module 안 직접 SDL2 textinput 함수 lookup
       if (M) {

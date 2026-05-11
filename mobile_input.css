@@ -251,10 +251,13 @@
         font-size: 12px;
         flex: 1;
     }
-    /* 모바일: 키보드 textbox 를 화면 아래 (canvas 밑, aux row 위) 로 이동 */
+    /* 모바일: textbox 는 화면 상단 (top: 14px). 이전 bottom: 250 은 가상 키보드
+     * (Android 280-320px, iOS 250-300px) 영역과 겹쳐 사용자가 textbox 를 못 봄.
+     * 화면 상단이면 키보드와 절대 안 겹침. 캐릭터 이름 입력 phase 에서 잠시 게임
+     * 캔버스 상단 일부 가리지만 입력 종료 후 hide. */
     #mobile-ime.visible {
-        top: auto;
-        bottom: 250px;  /* aux row (bottom 196 + 40 = 236) 위 14px gap */
+        top: 14px;
+        bottom: auto;
     }
 }
 

@@ -57,6 +57,34 @@ const MobileInput = (() => {
     el.addEventListener('mouseleave', release);
   }
 
+  // SDL2 textinput 라우팅 — iOS / Android / BlueStacks 모두 동일 path 로 forward.
+  // 1순위 emscripten ccall (Android), 2순위 emscripten hidden input simulate, 3순위
+  // canvas InputEvent (iOS). 첫 successful method 캐시.
+  const FWD_CCALL_CANDIDATES = [
+    '_SDL_SendKeyboardText', 'SDL_SendKeyboardText',
+    '_emscripten_text_input', 'emscripten_text_input',
+    '_textinput',
+  ];
+  let _fwdMethod = null;
+  let _emscriptenInput = null;
+  function findEmscriptenInput() {
+    if (_emscriptenInput && document.contains(_emscriptenInput)) return _emscriptenInput;
+    const ours = document.getElementById('mobile-ime');
+    const all = document.querySelectorAll('input, textarea');
+    for (const el of all) {
+      if (el === ours) continue;
+      const r = el.getBoundingClientRect();
+      const cs = window.getComputedStyle(el);
+      if (r.width < 5 || r.height < 5
+          || cs.opacity === '0' || cs.visibility === 'hidden'
+          || cs.display === 'none') {
+        _emscriptenInput = el;
+        return el;
+      }
+    }
+    return null;
+  }
+
   function installIME() {
     const ime = document.getElementById('mobile-ime');
     if (!ime) return;
@@ -69,13 +97,39 @@ const MobileInput = (() => {
 
     function forwardChar(ch) {
       if (!ch) return;
+      // 1순위: emscripten SDL2 textinput export ccall (multiple candidate name 시도)
+      if (window.Module && window.Module.ccall) {
+        for (const name of FWD_CCALL_CANDIDATES) {
+          try {
+            window.Module.ccall(name, null, ['string'], [ch]);
+            if (!_fwdMethod) {
+              _fwdMethod = 'ccall:' + name;
+              console.log('[forwardChar] using', _fwdMethod);
+            }
+            return;
+          } catch (e) { /* try next */ }
+        }
+      }
+      // 2순위: emscripten hidden input element 직접 자극 (Android Chrome 경로)
+      const hidden = findEmscriptenInput();
+      if (hidden) {
+        try {
+          hidden.value = (hidden.value || '') + ch;
+          hidden.dispatchEvent(new Event('input', { bubbles: true }));
+          if (!_fwdMethod) {
+            _fwdMethod = 'hidden-input';
+            console.log('[forwardChar] using', _fwdMethod, hidden);
+          }
+          return;
+        } catch (e) { /* fallthrough */ }
+      }
+      // 3순위: canvas InputEvent (iOS 동작 보존)
       const canvas = document.getElementById('canvas') || window;
       const ev = new InputEvent('textinput', { data: ch, bubbles: true });
       canvas.dispatchEvent(ev);
-      if (window.Module && window.Module.ccall) {
-        try {
-          window.Module.ccall('emscripten_text_input', null, ['string'], [ch]);
-        } catch (e) { /* ignore — fork 마다 다름 */ }
+      if (!_fwdMethod) {
+        _fwdMethod = 'canvas-inputEvent';
+        console.log('[forwardChar] using', _fwdMethod);
       }
     }
     function appendVisible(text) {

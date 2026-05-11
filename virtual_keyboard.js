@@ -258,6 +258,25 @@ const VirtualKeyboard = (() => {
     }
   }
 
+  // 버튼에 robust press handler 등록 — touchstart 에서 직접 처리 (preventDefault 후
+  // iOS Safari 가 click event 안 발생시키는 버그 회피). pointerdown 도 등록 (Android
+  // / PC mouse 호환). 중복 trigger 방지 flag.
+  function bindPress(el, fn) {
+    let consumed = false;
+    const press = (e) => {
+      if (consumed) return;
+      consumed = true;
+      setTimeout(() => { consumed = false; }, 80);  // touchend 후 ghost mouse 무시
+      try { e.preventDefault(); } catch (_) {}
+      try { e.stopPropagation(); } catch (_) {}
+      fn();
+    };
+    el.addEventListener('touchstart', press, { passive: false });
+    el.addEventListener('mousedown', press);
+    // pointerdown 도 등록 (modern browsers + pen + multi-touch 호환)
+    el.addEventListener('pointerdown', press);
+  }
+
   // ─── Render ───────────────────────────────────────────────────────────────
   function render() {
     if (!_kbEl) return;
@@ -272,12 +291,7 @@ const VirtualKeyboard = (() => {
         const b = document.createElement('button');
         b.className = 'vk-key';
         b.textContent = ch;
-        b.addEventListener('click', (e) => {
-          e.preventDefault();
-          handleChar(ch);
-        });
-        // touch 시 preventDefault 로 ghost mouse 방지
-        b.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+        bindPress(b, () => handleChar(ch));
         r.appendChild(b);
       }
       keysContainer.appendChild(r);
@@ -311,11 +325,7 @@ const VirtualKeyboard = (() => {
     document.body.appendChild(_kbEl);
     _echoEl = _kbEl.querySelector('.vk-echo');
     _kbEl.querySelectorAll('[data-act]').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.preventDefault();
-        handleSpecial(btn.dataset.act);
-      });
-      btn.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
+      bindPress(btn, () => handleSpecial(btn.dataset.act));
     });
     render();
   }

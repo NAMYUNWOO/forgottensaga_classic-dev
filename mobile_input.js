@@ -57,166 +57,96 @@ const MobileInput = (() => {
     el.addEventListener('mouseleave', release);
   }
 
-  // SDL2 textinput 라우팅 — iOS / Android / BlueStacks 모두 동일 path 로 forward.
-  // 1순위 emscripten ccall (Android), 2순위 emscripten hidden input simulate, 3순위
-  // canvas InputEvent (iOS). 첫 successful method 캐시.
-  // emscripten ccall name 은 underscore 없이 호출 (emscripten 이 _ prefix 자동 추가).
+  // SDL2 textinput candidate — Module 안 직접 함수 lookup 시도 (ccall/cwrap 없는 fork 호환).
+  // emscripten 은 보통 _ prefix. 우리는 _ 와 non-_ 둘 다 시도.
   const FWD_CCALL_CANDIDATES = [
     'SDL_SendKeyboardText',
     'SDL_TextInputEvent',
     'emscripten_text_input',
     'textinput',
   ];
-  let _fwdMethod = null;
-  let _emscriptenInput = null;
-  let _fwdDebugLogged = false;
-  // console.log + window.__logPush (설정 모달의 디버그로그 탭에서도 visible)
-  function _dbgLog() {
-    const args = Array.prototype.slice.call(arguments);
-    console.log.apply(console, args);
-    if (window.__logPush) {
-      try { window.__logPush(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '), false); } catch (e) {}
-    }
-  }
-  function findEmscriptenInput() {
-    if (_emscriptenInput && document.contains(_emscriptenInput)) return _emscriptenInput;
-    const ours = document.getElementById('mobile-ime');
-    const all = document.querySelectorAll('input, textarea');
-    for (const el of all) {
-      if (el === ours) continue;
-      const r = el.getBoundingClientRect();
-      const cs = window.getComputedStyle(el);
-      if (r.width < 5 || r.height < 5
-          || cs.opacity === '0' || cs.visibility === 'hidden'
-          || cs.display === 'none') {
-        _emscriptenInput = el;
-        return el;
-      }
-    }
-    return null;
-  }
 
   function installIME() {
     const ime = document.getElementById('mobile-ime');
     if (!ime) return;
-    // 사용자 시각 확인용 별도 누적 buffer — textbox value 가 환경별로 누적/clear
-    // 동작이 달라서 (특히 iOS Safari + 한글 IME) 우리가 직접 buffer 관리 + textbox.value
-    // 에 강제 write 하여 사용자 시각에 반드시 보이게.
-    let visBuf = '';
     let composing = false;
-    ime._resetForwardState = () => { visBuf = ''; ime.value = ''; };
 
     function forwardChar(ch) {
       if (!ch) return;
-      // 디버그 첫 1 회 — Module 의 모든 textinput-related export 확인
-      if (!_fwdDebugLogged) {
-        _fwdDebugLogged = true;
-        const M = window.Module;
-        _dbgLog('[fwd] Module:', !!M, 'ccall:', !!(M && M.ccall), 'cwrap:', !!(M && M.cwrap));
-        if (M) {
-          // Module 의 모든 key 중 textinput / SDL / text 관련 grep
-          try {
-            const keys = Object.keys(M);
-            const related = keys.filter(k => /text|sdl|input|kbd|keyboard|comp/i.test(k));
-            _dbgLog('[fwd] Module keys (related, total ' + keys.length + '):', related.slice(0, 30).join(', '));
-          } catch (e) { _dbgLog('[fwd] Object.keys err:', e.message); }
-          // SDL2 namespace
-          if (M.SDL2) {
-            try { _dbgLog('[fwd] Module.SDL2 keys:', Object.keys(M.SDL2).join(', ')); } catch (e) {}
-          }
-        }
-      }
       const M = window.Module;
-      // 1순위: Module 안 직접 함수 lookup (ccall 없어도 _SDL_xxx 직접 호출 가능 시)
+      // 1순위: Module 안 직접 SDL2 textinput 함수 lookup
       if (M) {
         for (const name of FWD_CCALL_CANDIDATES) {
-          // emscripten 은 보통 _ prefix. M['_SDL_SendKeyboardText'] 직접 접근
           const fn = M['_' + name] || M[name];
           if (typeof fn === 'function') {
             try {
-              // C string 으로 호출 — UTF8 encode 필요. M.allocateUTF8 사용
               if (M.allocateUTF8 && M._free) {
                 const ptr = M.allocateUTF8(ch);
                 fn(ptr);
                 M._free(ptr);
               } else {
-                fn(ch);  // best effort
-              }
-              if (!_fwdMethod) {
-                _fwdMethod = 'direct:' + name;
-                _dbgLog('[fwd] using', _fwdMethod);
+                fn(ch);
               }
               return;
             } catch (e) { /* try next */ }
           }
         }
       }
-      // 2순위: ccall 시도 (있으면)
+      // 2순위: ccall
       if (M && M.ccall) {
         for (const name of FWD_CCALL_CANDIDATES) {
-          try {
-            M.ccall(name, null, ['string'], [ch]);
-            if (!_fwdMethod) {
-              _fwdMethod = 'ccall:' + name;
-              _dbgLog('[fwd] using', _fwdMethod);
-            }
-            return;
-          } catch (e) { /* try next */ }
+          try { M.ccall(name, null, ['string'], [ch]); return; } catch (e) {}
         }
       }
-      // 3순위: 광범위 InputEvent dispatch — canvas, document, window 모두
+      // 3순위: 광범위 InputEvent dispatch (iOS Safari 동작 경로)
       const canvas = document.getElementById('canvas') || window;
       const targets = [canvas, document, window];
-      const evType = (typeof InputEvent !== 'undefined') ? InputEvent : Event;
       try {
-        const ev = new evType('textinput', { data: ch, bubbles: true });
-        for (const t of targets) {
-          try { t.dispatchEvent(ev); } catch (e) {}
-        }
-        if (!_fwdMethod) {
-          _fwdMethod = 'inputEvent-broad';
-          _dbgLog('[fwd] using', _fwdMethod);
-        }
-      } catch (e) {
-        _dbgLog('[fwd] InputEvent fail:', e.message);
-      }
+        const ev = new InputEvent('textinput', { data: ch, bubbles: true });
+        for (const t of targets) { try { t.dispatchEvent(ev); } catch (e) {} }
+      } catch (e) {}
     }
-    function appendVisible(text) {
-      if (!text) return;
-      visBuf += text;
-      // 너무 길면 끝에서 30 자만 유지 (textbox UX)
-      if (visBuf.length > 30) visBuf = visBuf.slice(-30);
-      ime.value = visBuf;
+    function forwardBackspace() {
+      const canvas = document.getElementById('canvas') || window;
+      const targets = [canvas, document, window];
+      for (const type of ['keydown', 'keyup']) {
+        const ev = new KeyboardEvent(type, {
+          key: 'Backspace', code: 'Backspace', keyCode: 8, which: 8,
+          bubbles: true, cancelable: true,
+        });
+        for (const t of targets) { try { t.dispatchEvent(ev); } catch (e) {} }
+      }
     }
 
     ime.addEventListener('compositionstart', () => { composing = true; });
     ime.addEventListener('compositionend', (ev) => {
       composing = false;
-      // 조합 완료 — ev.data 가 최종 한글 (예 "각"). game 으로 forward + textbox 누적.
       const data = ev.data || '';
       for (const ch of data) forwardChar(ch);
-      appendVisible(data);
+      // input 비우기 — 다음 입력 시 ime.value 누적 방지
+      ime.value = '';
     });
     ime.addEventListener('input', (ev) => {
-      // input event 의 inputType 으로 종류 구분.
       const it = ev.inputType || '';
-      if (it === 'insertCompositionText' || composing) {
-        // 조합 중 — visBuf 는 그대로, 단 textbox 에 조합 중간 결과 보이도록
-        // ime.value = visBuf + ev.data 로 set (compositionend 시 final 로 덮어씀).
-        ime.value = visBuf + (ev.data || '');
-        return;
-      }
+      // composition 중간 결과 — compositionend 에서 처리되므로 여기선 skip
+      if (it === 'insertCompositionText' || composing) return;
+      // backspace — 게임에 KeyboardEvent backspace forward
       if (it.startsWith('delete')) {
-        // textbox backspace — visBuf 한 글자 줄임 (시각만, 게임엔 backspace 안 보냄)
-        visBuf = visBuf.slice(0, -1);
-        ime.value = visBuf;
+        ime.value = '';
+        forwardBackspace();
         return;
       }
-      // 일반 영문/숫자 직접 입력 — ev.data 의 char forward + 누적 visible
       const data = ev.data;
-      if (!data) return;
-      for (const ch of data) forwardChar(ch);
-      appendVisible(data);
+      if (data) {
+        for (const ch of data) forwardChar(ch);
+      }
+      // input 비우기 — buffer 누적 방지 (panel 표시 안 함, value 시각 표시 X)
+      ime.value = '';
+    });
+    // textbox blur 시 imeBtn active state 해제
+    ime.addEventListener('blur', () => {
+      const imeBtn = document.getElementById('btn-ime');
+      if (imeBtn) imeBtn.classList.remove('active');
     });
   }
 
@@ -306,19 +236,23 @@ const MobileInput = (() => {
       const k = el.dataset.key;
       if (k) bindButton(el, k);
     });
-    // 키보드 토글 — 자체 가상 키보드 (window.VirtualKeyboard) 사용.
-    // OS 가상 키보드 의존 X → iOS/Android/BlueStacks 환경 무관 일관 동작.
-    // 기존 #mobile-ime textbox 는 호환용 hidden — 사용자에게 보이지 않음.
+    // 키보드 토글 — invisible #mobile-ime 에 focus() 만 호출하여 OS 가상 키보드 trigger.
+    // 별도 panel/textbox 표시 X. 사용자 입력 → input event → forwardChar → 게임 prompt.
     const imeBtn = document.getElementById('btn-ime');
     if (imeBtn) {
       imeBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        if (!window.VirtualKeyboard) {
-          console.warn('[MobileInput] VirtualKeyboard 미로드');
-          return;
+        const ime = document.getElementById('mobile-ime');
+        if (!ime) return;
+        if (document.activeElement === ime) {
+          ime.blur();
+          imeBtn.classList.remove('active');
+        } else {
+          ime.value = '';  // 누적 buffer reset
+          // user gesture 안에서 focus 호출 — iOS Safari / Android Chrome 가상 키보드 등장
+          ime.focus();
+          imeBtn.classList.add('active');
         }
-        window.VirtualKeyboard.toggle();
-        imeBtn.classList.toggle('active', window.VirtualKeyboard.isVisible());
       });
     }
     installIME();

@@ -148,6 +148,18 @@ const MobileInput = (() => {
       const imeBtn = document.getElementById('btn-ime');
       if (imeBtn) imeBtn.classList.remove('active');
     });
+
+    // 키보드 밖 터치 / 클릭 → ime blur → 가상 키보드 자동 닫힘.
+    // 가상 키보드 자체 터치는 browser native UI 라 page 의 touchstart event 발생 X — 안전.
+    const dismissIfOutside = (e) => {
+      if (document.activeElement !== ime) return;
+      const imeBtn = document.getElementById('btn-ime');
+      // imeBtn (토글) 과 ime 자체 클릭은 제외 — 토글로 처리
+      if (e.target === ime || e.target === imeBtn || (imeBtn && imeBtn.contains(e.target))) return;
+      ime.blur();
+    };
+    document.addEventListener('touchstart', dismissIfOutside, { passive: true });
+    document.addEventListener('mousedown', dismissIfOutside);
   }
 
   // === Joystick — nipplejs 사용 (multi-touch / touchcancel / Pointer Events 검증된 lib) ===

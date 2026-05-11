@@ -108,65 +108,77 @@ const MobileInput = (() => {
 
     function forwardChar(ch) {
       if (!ch) return;
-      // 디버그 첫 1 회: 시도 가능한 method 모두 분석 — 환경별 어느 path 가 valid 한지 확인
+      // 디버그 첫 1 회 — Module 의 모든 textinput-related export 확인
       if (!_fwdDebugLogged) {
         _fwdDebugLogged = true;
         const M = window.Module;
-        _dbgLog('[forwardChar DEBUG] Module:', !!M, 'ccall:', !!(M && M.ccall));
-        if (M && M.ccall) {
-          for (const name of FWD_CCALL_CANDIDATES) {
-            // 실제 호출 없이 cwrap 으로 함수 존재 여부 확인 시도
-            try {
-              const fn = M.cwrap ? M.cwrap(name, null, ['string']) : null;
-              _dbgLog('[forwardChar DEBUG] cwrap', name, '→', !!fn);
-            } catch (e) {
-              _dbgLog('[forwardChar DEBUG] cwrap', name, 'err:', e.message);
-            }
+        _dbgLog('[fwd] Module:', !!M, 'ccall:', !!(M && M.ccall), 'cwrap:', !!(M && M.cwrap));
+        if (M) {
+          // Module 의 모든 key 중 textinput / SDL / text 관련 grep
+          try {
+            const keys = Object.keys(M);
+            const related = keys.filter(k => /text|sdl|input|kbd|keyboard|comp/i.test(k));
+            _dbgLog('[fwd] Module keys (related, total ' + keys.length + '):', related.slice(0, 30).join(', '));
+          } catch (e) { _dbgLog('[fwd] Object.keys err:', e.message); }
+          // SDL2 namespace
+          if (M.SDL2) {
+            try { _dbgLog('[fwd] Module.SDL2 keys:', Object.keys(M.SDL2).join(', ')); } catch (e) {}
           }
         }
-        const hidden = findEmscriptenInput();
-        _dbgLog('[forwardChar DEBUG] hiddenInput:', hidden ? (hidden.tagName + '#' + (hidden.id || '') + '.' + (hidden.className || '')) : 'none');
-        // 모든 input/textarea 나열
-        const all = document.querySelectorAll('input, textarea');
-        all.forEach((el, i) => {
-          const r = el.getBoundingClientRect();
-          const cs = window.getComputedStyle(el);
-          _dbgLog('[forwardChar DEBUG] el#' + i, el.tagName, 'id=' + el.id, 'size=' + Math.round(r.width) + 'x' + Math.round(r.height), 'opacity=' + cs.opacity, 'display=' + cs.display);
-        });
       }
-      // 1순위: emscripten SDL2 textinput export ccall (multiple candidate name 시도)
-      if (window.Module && window.Module.ccall) {
+      const M = window.Module;
+      // 1순위: Module 안 직접 함수 lookup (ccall 없어도 _SDL_xxx 직접 호출 가능 시)
+      if (M) {
+        for (const name of FWD_CCALL_CANDIDATES) {
+          // emscripten 은 보통 _ prefix. M['_SDL_SendKeyboardText'] 직접 접근
+          const fn = M['_' + name] || M[name];
+          if (typeof fn === 'function') {
+            try {
+              // C string 으로 호출 — UTF8 encode 필요. M.allocateUTF8 사용
+              if (M.allocateUTF8 && M._free) {
+                const ptr = M.allocateUTF8(ch);
+                fn(ptr);
+                M._free(ptr);
+              } else {
+                fn(ch);  // best effort
+              }
+              if (!_fwdMethod) {
+                _fwdMethod = 'direct:' + name;
+                _dbgLog('[fwd] using', _fwdMethod);
+              }
+              return;
+            } catch (e) { /* try next */ }
+          }
+        }
+      }
+      // 2순위: ccall 시도 (있으면)
+      if (M && M.ccall) {
         for (const name of FWD_CCALL_CANDIDATES) {
           try {
-            window.Module.ccall(name, null, ['string'], [ch]);
+            M.ccall(name, null, ['string'], [ch]);
             if (!_fwdMethod) {
               _fwdMethod = 'ccall:' + name;
-              _dbgLog('[forwardChar] using', _fwdMethod);
+              _dbgLog('[fwd] using', _fwdMethod);
             }
             return;
           } catch (e) { /* try next */ }
         }
       }
-      // 2순위: emscripten hidden input element 직접 자극 (Android Chrome 경로)
-      const hidden = findEmscriptenInput();
-      if (hidden) {
-        try {
-          hidden.value = (hidden.value || '') + ch;
-          hidden.dispatchEvent(new Event('input', { bubbles: true }));
-          if (!_fwdMethod) {
-            _fwdMethod = 'hidden-input';
-            _dbgLog('[forwardChar] using', _fwdMethod, hidden);
-          }
-          return;
-        } catch (e) { /* fallthrough */ }
-      }
-      // 3순위: canvas InputEvent (iOS 동작 보존)
+      // 3순위: 광범위 InputEvent dispatch — canvas, document, window 모두
       const canvas = document.getElementById('canvas') || window;
-      const ev = new InputEvent('textinput', { data: ch, bubbles: true });
-      canvas.dispatchEvent(ev);
-      if (!_fwdMethod) {
-        _fwdMethod = 'canvas-inputEvent';
-        _dbgLog('[forwardChar] using', _fwdMethod);
+      const targets = [canvas, document, window];
+      const evType = (typeof InputEvent !== 'undefined') ? InputEvent : Event;
+      try {
+        const ev = new evType('textinput', { data: ch, bubbles: true });
+        for (const t of targets) {
+          try { t.dispatchEvent(ev); } catch (e) {}
+        }
+        if (!_fwdMethod) {
+          _fwdMethod = 'inputEvent-broad';
+          _dbgLog('[fwd] using', _fwdMethod);
+        }
+      } catch (e) {
+        _dbgLog('[fwd] InputEvent fail:', e.message);
       }
     }
     function appendVisible(text) {

@@ -246,52 +246,6 @@ const MobileInput = (() => {
     window.addEventListener('blur', () => setDir(null));
   }
 
-  // Windows 한/영 키 → mobile-ime 자동 focus.
-  // 배경: macOS Chrome 은 canvas focus 상태에서도 OS IME 가 composition event 발송 →
-  //   직접 한국어 입력 정상. Windows 는 IME 가 input/textarea 만 활성 → canvas focus
-  //   상태에서 한/영 키 눌러도 영문 그대로. mobile-ime focus 로 강제 이동시켜 OS IME
-  //   활성. macOS / iOS 는 skip (기존 path 정상 동작).
-  function installHangulShortcut() {
-    const ime = document.getElementById('mobile-ime');
-    if (!ime) return;
-    const plat = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
-    const isWindows = /Win/i.test(plat);
-    if (!isWindows) return;
-
-    document.addEventListener('keydown', (e) => {
-      // 가드 1: 다른 input/textarea focus 중 (save controls 등) 이면 skip
-      const ae = document.activeElement;
-      if (ae && ae !== ime && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA')) return;
-
-      // 한/영 키 후보 — Chromium e.key='HangulMode' or e.code='Lang1' 주로 사용
-      const isHangul = e.key === 'HangulMode' || e.key === 'Hangul'
-                    || e.code === 'Lang1' || e.code === 'IntlYen';
-      if (isHangul) {
-        e.preventDefault();
-        e.stopPropagation();
-        const imeBtn = document.getElementById('btn-ime');
-        if (document.activeElement === ime) {
-          ime.blur();
-          if (imeBtn) imeBtn.classList.remove('active');
-        } else {
-          ime.value = '';
-          ime.focus();
-          if (imeBtn) imeBtn.classList.add('active');
-        }
-        if (!_fwdMethodLogged) _dbg('[hangul-shortcut] toggled mobile-ime focus');
-        return;
-      }
-
-      // ESC 누름 + ime focus 상태 → canvas 복귀 (game ESC keydown 은 bubble 로 그대로 전달)
-      if (e.key === 'Escape' && document.activeElement === ime) {
-        ime.blur();
-        const imeBtn = document.getElementById('btn-ime');
-        if (imeBtn) imeBtn.classList.remove('active');
-        // preventDefault 안 함 — 게임 ESC 처리 (메뉴 cancel) 그대로 동작
-      }
-    }, true);  // capture phase — input 의 default 처리 전 가로채기
-  }
-
   function install() {
     // 좌하단 조이스틱 (D-pad 대체)
     installJoystick();
@@ -320,7 +274,6 @@ const MobileInput = (() => {
       });
     }
     installIME();
-    installHangulShortcut();
     console.log('[MobileInput] installed');
   }
 

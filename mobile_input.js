@@ -131,6 +131,15 @@ const MobileInput = (() => {
         try { document.dispatchEvent(ev); } catch (e) {}
       }
     }
+    function forwardEnter() {
+      for (const type of ['keydown', 'keyup']) {
+        const ev = new KeyboardEvent(type, {
+          key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+          bubbles: true, cancelable: true,
+        });
+        try { document.dispatchEvent(ev); } catch (e) {}
+      }
+    }
 
     // IME composition — compositionupdate 로 실시간 partial forward.
     // compositionupdate 마다 이전 partial 을 backspace 로 취소하고 새 partial 을
@@ -174,9 +183,31 @@ const MobileInput = (() => {
         forwardBackspace();
         return;
       }
+      // Android 가상 키보드 Enter: input event inputType='insertLineBreak'
+      // (keydown event 안 보내는 환경). PC 물리 키보드 Enter 는 별도 keydown
+      // listener 가 처리.
+      if (it === 'insertLineBreak' || it === 'insertParagraph') {
+        forwardEnter();
+        return;
+      }
       // insertText: 영문 / 일반 char — composition 안 거치는 입력 path
       if (ev.data) {
+        // data 가 newline (\n) 이면 enter
+        if (ev.data === '\n' || ev.data === '\r' || ev.data === '\r\n') {
+          forwardEnter();
+          return;
+        }
         for (const ch of ev.data) forwardChar(ch);
+      }
+    });
+
+    // keydown listener — PC 물리 키보드의 Enter / Backspace 가 input event 보다
+    // 먼저 또는 별도로 옴. PC 의 Enter 는 input 의 default 동작 (form submit 시도)
+    // 없으므로 직접 dispatch 필요.
+    ime.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.keyCode === 13) {
+        ev.preventDefault();
+        forwardEnter();
       }
     });
 

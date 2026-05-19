@@ -68,24 +68,16 @@ const MobileInput = (() => {
   }
 
   // 환경 감지 — PC (마우스/물리 키보드) vs 모바일 (touch).
-  // PC: mobile-ime 항상 focus 유지 → Windows 한/영 키로 한국어 모드 시작 가능,
-  //     OS IME composition 자동 활성. UX 향상 — 우상단 "키보드" 버튼 클릭 불필요.
-  // 모바일: 기존 path (btn-ime 클릭 토글) 유지 — 항상 focus 시 가상 키보드가 늘 떠
-  //     있어 게임 화면을 가림.
+  // PC: mobile-ime 항상 focus 유지 → OS IME 활성 → 한/영 키로 한국어 모드.
+  // 모바일: btn-ime 클릭 토글 (항상 focus 시 가상 키보드 늘 떠 있어 게임 가림).
   const _isPCEnv = window.matchMedia
     && window.matchMedia('(pointer: fine)').matches
     && !/Mobi|Android|iPhone|iPad|Tablet/i.test(navigator.userAgent || '');
-
-  // 빈 input 시 Android Chrome 의 가상 키보드 backspace 가 input event 를 발생시키지
-  // 않는 문제 회피용 dummy text. zero-width space — caret-color: transparent 와 함께
-  // 시각적으로 안 보임. forwardChar / forwardKey 시 모두 제외.
-  const DUMMY = '​';
 
   function installIME() {
     const ime = document.getElementById('mobile-ime');
     if (!ime) return;
     let composing = false;
-    let _lastBackspaceTime = 0;  // PC 물리 키보드 backspace 와 input event delete dedup
 
     function forwardChar(ch) {
       if (!ch) return;
@@ -139,62 +131,41 @@ const MobileInput = (() => {
       }
     }
 
-    // 초기값 — dummy 유지로 빈 input 회피 (Android backspace fix).
-    ime.value = DUMMY;
-
+    // 한국어 등 IME composition — compositionend 시 완성 syllable forwardChar
     ime.addEventListener('compositionstart', () => { composing = true; });
     ime.addEventListener('compositionend', (ev) => {
       composing = false;
       const data = ev.data || '';
-      for (const ch of data) {
-        if (ch !== DUMMY) forwardChar(ch);
-      }
-      ime.value = DUMMY;
+      for (const ch of data) forwardChar(ch);
     });
 
-    // backspace dedup mark — PC 물리 키보드의 keydown 으로 SDL2 가 이미 backspace
-    // 처리하므로 input event 의 deleteContent... 와 중복 호출 방지.
-    ime.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Backspace' || ev.keyCode === 8) {
-        _lastBackspaceTime = Date.now();
-      }
-    });
-
+    // input event — composition 외 일반 입력 + delete
     ime.addEventListener('input', (ev) => {
       const it = ev.inputType || '';
       if (it === 'insertCompositionText' || composing) return;
       if (it.startsWith('delete')) {
-        // PC 키보드: keydown 으로 SDL2 가 backspace 이미 받음 — 중복 방지.
-        if (Date.now() - _lastBackspaceTime < 100) {
-          ime.value = DUMMY;
-          return;
-        }
-        // 모바일 가상 키보드: keydown 없이 input event 만 옴 → 직접 forward.
         forwardBackspace();
-        ime.value = DUMMY;
-        // Android GBoard: backspace 직후 input 을 자동 blur → 가상 키보드 닫힘.
-        // 즉시 focus 복귀로 키보드 유지 + 연속 backspace 가능.
-        setTimeout(() => {
-          if (document.activeElement !== ime) {
-            try { ime.focus(); } catch (e) {}
-          }
-        }, 0);
         return;
       }
-      // 모든 환경에서 input event 의 char 를 forwardChar — 모바일 가상 키보드는
-      // keydown 발생 안 함 + iOS Safari fallback 도 동일 path. PC 의 영문 keydown
-      // 은 SDL2 가 받는데 input event 의 forwardChar 와 중복 호출 — love.textinput
-      // 이 2 번 호출됨. 단 charcreate 의 textinput buffer 가 그것만 append 하면
-      // 가시적 버그. 우리 charcreate.lua 는 textinput 으로 char 추가 → PC 에서 영문
-      // 두 번 입력 가능. (분리 처리 추후 검토.)
-      const data = ev.data;
-      if (data) {
-        for (const ch of data) {
-          if (ch !== DUMMY) forwardChar(ch);
-        }
+      // insertText: 영문 / 일반 char — composition 안 거치는 입력 path
+      if (ev.data) {
+        for (const ch of ev.data) forwardChar(ch);
       }
-      ime.value = DUMMY;
     });
+
+    // visible-to-OS pattern: input value 정리 불필요. native input 처럼 자연스럽게
+    // 동작 — IME composition / backspace 모두 native 흐름. value 가 누적되면 100자
+    // 마다 reset (메모리 위생).
+    let _resetCounter = 0;
+    ime.addEventListener('input', () => {
+      _resetCounter++;
+      if (_resetCounter > 100) {
+        _resetCounter = 0;
+        // composition 중이 아닐 때만 reset (composition 깨짐 방지)
+        if (!composing) ime.value = '';
+      }
+    });
+
     // textbox blur 시 imeBtn active state 해제
     ime.addEventListener('blur', () => {
       const imeBtn = document.getElementById('btn-ime');
@@ -212,30 +183,25 @@ const MobileInput = (() => {
     ime.addEventListener('compositionstart', () => _dbg('[ime] compositionstart'));
     ime.addEventListener('compositionend', (ev) => _dbg('[ime] compositionend data=' + JSON.stringify(ev.data)));
 
-    // PC: mobile-ime 항상 focus 유지 → Windows 한/영 키 OS IME 활성, 자연스러운
-    // 한국어 입력. 다른 input (save panel 등) focus 시는 빼앗지 않음.
+    // PC: 항상 focus 유지. visible-to-OS pattern + pointer-events: none 이라
+    // canvas / UI click 영향 없음. JS focus() 만으로 IME context 활성.
     if (_isPCEnv) {
-      function ensureFocus() {
-        try { ime.focus(); } catch (e) {}
-      }
-      // 즉시 + 다단계 재시도 — splash / audio prompt / game load 등 단계별
-      // 다른 element 가 focus 가져갈 수 있음.
+      const ensureFocus = () => { try { ime.focus(); } catch (e) {} };
       ensureFocus();
-      setTimeout(ensureFocus, 100);
+      // splash / audio prompt 후 단계별 재시도
       setTimeout(ensureFocus, 500);
       setTimeout(ensureFocus, 2000);
       // blur 시 복귀 — 다른 input/textarea 가 활성이면 양보
       ime.addEventListener('blur', () => {
         setTimeout(() => {
           const ae = document.activeElement;
-          if (!ae || ae === document.body || (ae.tagName === 'CANVAS')) {
+          if (!ae || ae === document.body || ae.tagName === 'CANVAS') {
             ensureFocus();
           }
         }, 0);
       });
-      // 사용자가 canvas / 빈 영역 click 시 focus 복귀 (브라우저 user-gesture 정책
-      // 우회 — 첫 click 후 focus 보장).
-      document.addEventListener('click', (e) => {
+      // 첫 user click 후 focus 보장 (브라우저 user-gesture 정책)
+      document.addEventListener('click', () => {
         setTimeout(() => {
           const ae = document.activeElement;
           if (!ae || ae === document.body || ae.tagName === 'CANVAS') {
@@ -245,8 +211,7 @@ const MobileInput = (() => {
       });
     }
 
-    // 모바일: 키보드 밖 터치 / 클릭 → ime blur → 가상 키보드 자동 닫힘.
-    // PC env 에선 비활성 (항상 focus 유지 정책과 충돌).
+    // 모바일: 키보드 밖 터치 → blur → 가상 키보드 닫힘 (기존 btn-ime path)
     if (!_isPCEnv) {
       const dismissIfOutside = (e) => {
         if (document.activeElement !== ime) return;

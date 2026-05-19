@@ -128,28 +128,34 @@
     color: #ffd566;
 }
 
-/* === IME input — OS 가상 키보드 trigger 용 focus target ===
- * 거의 invisible (4px size, opacity 0.01) 이지만 OS IME 가 visible element 로
- * 판단할 만큼은 표시. 일부 OS (Windows Microsoft IME) 는 opacity 0 / 1px size
- * input 을 invisible 로 보고 IME 활성 안 함. 4px + opacity 0.01 은 시각상 거의
- * 안 보이지만 IME 는 visible 인식.
+/* === IME input — "visible-to-OS hidden-to-user" pattern ===
+ * 사용자 시각엔 안 보이지만 OS IME 가 visible element 로 인식하는 충분한 크기/
+ * opacity. 1px / opacity 0 같은 too-invisible 한 input 은 일부 OS (Windows
+ * Microsoft IME, Android GBoard) 가 invisible 로 판단 → IME context 미활성 →
+ * 한국어 입력 / composition 불가.
  *
- * "키보드" 버튼 click 시 focus() 호출 → iOS / Android 가상 키보드 등장.
- * PC env 에선 항상 focus 유지 (mobile_input.js installIME). 입력은 input event
- * 로 받아 forwardChar 로 게임에 forward.
+ * 핵심:
+ *   - 200×30 size + opacity 1 → OS 가 정상 visible element 로 인식
+ *   - background / color / caret-color: transparent → 사용자에겐 안 보임
+ *   - pointer-events: none → click 통과 (canvas / UI 영향 X)
+ *
+ * PC: 항상 focus 유지 (mobile_input.js). 사용자가 한/영 키 눌러 OS IME 한국어
+ *     모드 전환 → 자연스러운 입력.
+ * 모바일: btn-ime 클릭으로 focus 토글 (가상 키보드 등장/닫힘).
  */
 #mobile-ime {
     position: fixed;
     top: 0; left: 0;
-    width: 4px; height: 4px;
-    opacity: 0.01;
+    width: 200px; height: 30px;
+    opacity: 1;
     border: 0;
     padding: 0;
     background: transparent;
     color: transparent;
     caret-color: transparent;
     outline: none;
-    z-index: 1;
+    pointer-events: none;
+    z-index: 50;
 }
 #btn-ime.active {
     background: rgba(120, 160, 220, 0.75);

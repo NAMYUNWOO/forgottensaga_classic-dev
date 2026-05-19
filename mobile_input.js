@@ -172,6 +172,13 @@ const MobileInput = (() => {
         // 모바일 가상 키보드: keydown 없이 input event 만 옴 → 직접 forward.
         forwardBackspace();
         ime.value = DUMMY;
+        // Android GBoard: backspace 직후 input 을 자동 blur → 가상 키보드 닫힘.
+        // 즉시 focus 복귀로 키보드 유지 + 연속 backspace 가능.
+        setTimeout(() => {
+          if (document.activeElement !== ime) {
+            try { ime.focus(); } catch (e) {}
+          }
+        }, 0);
         return;
       }
       // 모든 환경에서 input event 의 char 를 forwardChar — 모바일 가상 키보드는

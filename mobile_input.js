@@ -201,15 +201,10 @@ const MobileInput = (() => {
       }
     });
 
-    // keydown listener — PC 물리 키보드의 Enter / Backspace 가 input event 보다
-    // 먼저 또는 별도로 옴. PC 의 Enter 는 input 의 default 동작 (form submit 시도)
-    // 없으므로 직접 dispatch 필요.
-    ime.addEventListener('keydown', (ev) => {
-      if (ev.key === 'Enter' || ev.keyCode === 13) {
-        ev.preventDefault();
-        forwardEnter();
-      }
-    });
+    // PC 물리 키보드 Enter / Backspace 는 keydown event 가 bubble 로 SDL2 listener
+    // 에 도달 → 자동 처리. 우리가 별도 dispatch 하면 중복 호출 회귀 (Enter 2번
+    // forward). Android 가상 키보드는 keydown 안 옴 → input event 의 insertLineBreak
+    // / insertParagraph 분기로 처리 (위).
 
     // visible-to-OS pattern: input value 정리 불필요. native input 처럼 자연스럽게
     // 동작 — IME composition / backspace 모두 native 흐름. value 가 누적되면 100자

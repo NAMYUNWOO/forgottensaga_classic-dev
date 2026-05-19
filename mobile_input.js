@@ -194,6 +194,17 @@ const MobileInput = (() => {
       if (imeBtn) imeBtn.classList.remove('active');
     });
 
+    // 디버그: input event / focus state console.log (사용자 검증용)
+    ime.addEventListener('focus', () => _dbg('[ime] FOCUSED'));
+    ime.addEventListener('focusout', () => {
+      setTimeout(() => _dbg('[ime] BLURRED → activeElement=' + (document.activeElement && document.activeElement.id || document.activeElement && document.activeElement.tagName)), 0);
+    });
+    ime.addEventListener('input', (ev) => {
+      _dbg('[ime] input type=' + (ev.inputType || '?') + ' data=' + JSON.stringify(ev.data) + ' value=' + JSON.stringify(ime.value));
+    });
+    ime.addEventListener('compositionstart', () => _dbg('[ime] compositionstart'));
+    ime.addEventListener('compositionend', (ev) => _dbg('[ime] compositionend data=' + JSON.stringify(ev.data)));
+
     // PC: mobile-ime 항상 focus 유지 → Windows 한/영 키 OS IME 활성, 자연스러운
     // 한국어 입력. 다른 input (save panel 등) focus 시는 빼앗지 않음.
     if (_isPCEnv) {

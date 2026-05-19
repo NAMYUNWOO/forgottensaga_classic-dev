@@ -225,39 +225,19 @@ const MobileInput = (() => {
       if (imeBtn) imeBtn.classList.remove('active');
     });
 
-    // 디버그: input event / focus state console.log + 임시 visible border
-    // (focus 상태 시각 확인 — Windows 한/영 변환 안 됨 원인 진단용).
-    // 검증 후 outline border 제거 예정.
-    ime.addEventListener('focus', () => {
-      _dbg('[ime] FOCUSED');
-      ime.style.outline = '2px solid lime';
-    });
-    ime.addEventListener('focusout', () => {
-      ime.style.outline = 'none';
-      setTimeout(() => _dbg('[ime] BLURRED → activeElement=' + (document.activeElement && document.activeElement.id || document.activeElement && document.activeElement.tagName)), 0);
-    });
-    ime.addEventListener('input', (ev) => {
-      _dbg('[ime] input type=' + (ev.inputType || '?') + ' data=' + JSON.stringify(ev.data) + ' value=' + JSON.stringify(ime.value));
-    });
-    ime.addEventListener('compositionstart', () => _dbg('[ime] compositionstart'));
-    ime.addEventListener('compositionend', (ev) => _dbg('[ime] compositionend data=' + JSON.stringify(ev.data)));
-
     // PC: 항상 focus 유지. visible-to-OS pattern + pointer-events: none 이라
     // canvas / UI click 영향 없음. JS focus() 만으로 IME context 활성.
     if (_isPCEnv) {
-      const ensureFocus = (reason) => {
-        try {
-          ime.focus();
-          _dbg('[ime] ensureFocus (' + reason + ') activeEl=' + (document.activeElement && document.activeElement.id || document.activeElement && document.activeElement.tagName));
-        } catch (e) {}
+      const ensureFocus = () => {
+        try { ime.focus(); } catch (e) {}
       };
-      ensureFocus('init');
-      setTimeout(() => ensureFocus('init+500'), 500);
-      setTimeout(() => ensureFocus('init+2000'), 2000);
+      ensureFocus();
+      setTimeout(ensureFocus, 500);
+      setTimeout(ensureFocus, 2000);
 
       // 모든 mouse / touch / keyboard event 후 focus 복귀 시도 — input/textarea/
       // button/select 가 focus 면 양보 (그 element 의 정상 동작 보장).
-      const refocusIfFree = (reason) => {
+      const refocusIfFree = () => {
         const ae = document.activeElement;
         if (!ae || ae === ime) return;
         const tag = ae.tagName;
@@ -265,24 +245,24 @@ const MobileInput = (() => {
         if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
         // BUTTON click 직후엔 button 이 focus — 잠시 후 복귀
         if (tag === 'BUTTON' || (ae.closest && ae.closest('button'))) {
-          setTimeout(() => ensureFocus(reason + '-after-button'), 100);
+          setTimeout(ensureFocus, 100);
           return;
         }
-        ensureFocus(reason);
+        ensureFocus();
       };
 
       ime.addEventListener('blur', () => {
-        setTimeout(() => refocusIfFree('blur'), 0);
+        setTimeout(refocusIfFree, 0);
       });
-      document.addEventListener('mousedown', (e) => {
-        setTimeout(() => refocusIfFree('mousedown:' + (e.target && e.target.tagName)), 0);
+      document.addEventListener('mousedown', () => {
+        setTimeout(refocusIfFree, 0);
       });
       document.addEventListener('click', () => {
-        setTimeout(() => refocusIfFree('click'), 0);
+        setTimeout(refocusIfFree, 0);
       });
-      // 첫 keydown 시도 — focus 못 받았으면 그 시점에 복귀 (한/영 키 직전 대비)
+      // 첫 keydown 시 focus 점검 — 사용자가 한/영 키 누른 순간 focus 보장
       document.addEventListener('keydown', () => {
-        if (document.activeElement !== ime) refocusIfFree('keydown');
+        if (document.activeElement !== ime) refocusIfFree();
       }, true);
     }
 

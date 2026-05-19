@@ -67,10 +67,25 @@ const MobileInput = (() => {
     }
   }
 
+  // 환경 감지 — PC (마우스/물리 키보드) vs 모바일 (touch).
+  // PC: mobile-ime 항상 focus 유지 → Windows 한/영 키로 한국어 모드 시작 가능,
+  //     OS IME composition 자동 활성. UX 향상 — 우상단 "키보드" 버튼 클릭 불필요.
+  // 모바일: 기존 path (btn-ime 클릭 토글) 유지 — 항상 focus 시 가상 키보드가 늘 떠
+  //     있어 게임 화면을 가림.
+  const _isPCEnv = window.matchMedia
+    && window.matchMedia('(pointer: fine)').matches
+    && !/Mobi|Android|iPhone|iPad|Tablet/i.test(navigator.userAgent || '');
+
+  // 빈 input 시 Android Chrome 의 가상 키보드 backspace 가 input event 를 발생시키지
+  // 않는 문제 회피용 dummy text. zero-width space — caret-color: transparent 와 함께
+  // 시각적으로 안 보임. forwardChar / forwardKey 시 모두 제외.
+  const DUMMY = '​';
+
   function installIME() {
     const ime = document.getElementById('mobile-ime');
     if (!ime) return;
     let composing = false;
+    let _lastBackspaceTime = 0;  // PC 물리 키보드 backspace 와 input event delete dedup
 
     function forwardChar(ch) {
       if (!ch) return;
@@ -124,30 +139,46 @@ const MobileInput = (() => {
       }
     }
 
+    // 초기값 — dummy 유지로 빈 input 회피 (Android backspace fix).
+    ime.value = DUMMY;
+
     ime.addEventListener('compositionstart', () => { composing = true; });
     ime.addEventListener('compositionend', (ev) => {
       composing = false;
       const data = ev.data || '';
-      for (const ch of data) forwardChar(ch);
-      // input 비우기 — 다음 입력 시 ime.value 누적 방지
-      ime.value = '';
+      for (const ch of data) {
+        if (ch !== DUMMY) forwardChar(ch);
+      }
+      ime.value = DUMMY;
     });
+
+    // backspace dedup mark — PC 물리 키보드의 keydown 으로 SDL2 가 이미 backspace
+    // 처리하므로 input event 의 deleteContent... 와 중복 호출 방지.
+    ime.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Backspace' || ev.keyCode === 8) {
+        _lastBackspaceTime = Date.now();
+      }
+    });
+
     ime.addEventListener('input', (ev) => {
       const it = ev.inputType || '';
-      // composition 중간 결과 — compositionend 에서 처리되므로 여기선 skip
       if (it === 'insertCompositionText' || composing) return;
-      // backspace — 게임에 KeyboardEvent backspace forward
       if (it.startsWith('delete')) {
-        ime.value = '';
+        // PC 키보드: keydown 으로 SDL2 가 backspace 이미 받음 — 중복 방지.
+        if (Date.now() - _lastBackspaceTime < 100) {
+          ime.value = DUMMY;
+          return;
+        }
+        // 모바일 가상 키보드: keydown 없이 input event 만 옴 → 직접 forward.
         forwardBackspace();
+        ime.value = DUMMY;
         return;
       }
-      const data = ev.data;
-      if (data) {
-        for (const ch of data) forwardChar(ch);
-      }
-      // input 비우기 — buffer 누적 방지 (panel 표시 안 함, value 시각 표시 X)
-      ime.value = '';
+      // ASCII 영문 / space 등은 SDL2 keydown handler 가 처리 (input element 의
+      // keydown 도 bubble 로 SDL2 에 도달). 우리는 dummy 복원만.
+      //
+      // 한국어 등 composition 결과는 위 compositionend 에서 forwardChar 호출됨.
+      ime.value = DUMMY;
     });
     // textbox blur 시 imeBtn active state 해제
     ime.addEventListener('blur', () => {
@@ -155,17 +186,34 @@ const MobileInput = (() => {
       if (imeBtn) imeBtn.classList.remove('active');
     });
 
-    // 키보드 밖 터치 / 클릭 → ime blur → 가상 키보드 자동 닫힘.
-    // 가상 키보드 자체 터치는 browser native UI 라 page 의 touchstart event 발생 X — 안전.
-    const dismissIfOutside = (e) => {
-      if (document.activeElement !== ime) return;
-      const imeBtn = document.getElementById('btn-ime');
-      // imeBtn (토글) 과 ime 자체 클릭은 제외 — 토글로 처리
-      if (e.target === ime || e.target === imeBtn || (imeBtn && imeBtn.contains(e.target))) return;
-      ime.blur();
-    };
-    document.addEventListener('touchstart', dismissIfOutside, { passive: true });
-    document.addEventListener('mousedown', dismissIfOutside);
+    // PC: mobile-ime 항상 focus 유지 → Windows 한/영 키 OS IME 활성, 자연스러운
+    // 한국어 입력. 다른 input (save panel 등) focus 시는 빼앗지 않음.
+    if (_isPCEnv) {
+      // 초기 focus — page load 이후 약간 지연시켜 다른 init code 와 race 회피.
+      setTimeout(() => { try { ime.focus(); } catch (e) {} }, 100);
+      ime.addEventListener('blur', () => {
+        setTimeout(() => {
+          const ae = document.activeElement;
+          // body / canvas / 없음 일 때만 복귀 (save panel input 등은 그대로 둠)
+          if (!ae || ae === document.body || (ae.tagName === 'CANVAS')) {
+            try { ime.focus(); } catch (e) {}
+          }
+        }, 0);
+      });
+    }
+
+    // 모바일: 키보드 밖 터치 / 클릭 → ime blur → 가상 키보드 자동 닫힘.
+    // PC env 에선 비활성 (항상 focus 유지 정책과 충돌).
+    if (!_isPCEnv) {
+      const dismissIfOutside = (e) => {
+        if (document.activeElement !== ime) return;
+        const imeBtn = document.getElementById('btn-ime');
+        if (e.target === ime || e.target === imeBtn || (imeBtn && imeBtn.contains(e.target))) return;
+        ime.blur();
+      };
+      document.addEventListener('touchstart', dismissIfOutside, { passive: true });
+      document.addEventListener('mousedown', dismissIfOutside);
+    }
   }
 
   // === Joystick — nipplejs 사용 (multi-touch / touchcancel / Pointer Events 검증된 lib) ===

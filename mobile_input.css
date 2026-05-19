@@ -155,7 +155,11 @@
     caret-color: transparent;
     outline: none;
     pointer-events: none;
-    z-index: 50;
+    /* z-index 99999 — splash-overlay (9999), save-panel (200), audio-prompt
+     * (180), top-right (199) 등 모든 overlay 보다 위. 이전 z-index 50 은 splash
+     * 의 hidden 상태 (display: flex + opacity 0) stacking 아래로 깔려 큰 창에서
+     * focus 못 받는 버그 원인. */
+    z-index: 99999;
 }
 #btn-ime.active {
     background: rgba(120, 160, 220, 0.75);

@@ -131,12 +131,38 @@ const MobileInput = (() => {
       }
     }
 
-    // 한국어 등 IME composition — compositionend 시 완성 syllable forwardChar
-    ime.addEventListener('compositionstart', () => { composing = true; });
+    // IME composition — compositionupdate 로 실시간 partial forward.
+    // compositionupdate 마다 이전 partial 을 backspace 로 취소하고 새 partial 을
+    // forward → 사용자가 game 에서 실시간으로 조합 중인 한국어 syllable 볼 수 있음.
+    // compositionend 가 일어날 때까지 (스페이스/엔터/새 syllable) 기다리면 사용자
+    // 입장에서 입력이 안 되는 것처럼 보임.
+    let _composingData = '';
+    ime.addEventListener('compositionstart', () => {
+      composing = true;
+      _composingData = '';
+    });
+    ime.addEventListener('compositionupdate', (ev) => {
+      const newData = ev.data || '';
+      // 이전 partial char 들 게임에서 backspace 로 제거
+      for (let i = 0; i < _composingData.length; i++) {
+        forwardBackspace();
+      }
+      // 새 partial char forward
+      for (const ch of newData) forwardChar(ch);
+      _composingData = newData;
+    });
     ime.addEventListener('compositionend', (ev) => {
       composing = false;
       const data = ev.data || '';
-      for (const ch of data) forwardChar(ch);
+      // compositionupdate 가 마지막 partial 도 처리했으면 추가 변경 없음.
+      // compositionupdate 가 발생 안 한 환경 / final 값이 다른 경우만 보정.
+      if (_composingData !== data) {
+        for (let i = 0; i < _composingData.length; i++) {
+          forwardBackspace();
+        }
+        for (const ch of data) forwardChar(ch);
+      }
+      _composingData = '';
     });
 
     // input event — composition 외 일반 입력 + delete
@@ -172,9 +198,15 @@ const MobileInput = (() => {
       if (imeBtn) imeBtn.classList.remove('active');
     });
 
-    // 디버그: input event / focus state console.log (사용자 검증용)
-    ime.addEventListener('focus', () => _dbg('[ime] FOCUSED'));
+    // 디버그: input event / focus state console.log + 임시 visible border
+    // (focus 상태 시각 확인 — Windows 한/영 변환 안 됨 원인 진단용).
+    // 검증 후 outline border 제거 예정.
+    ime.addEventListener('focus', () => {
+      _dbg('[ime] FOCUSED');
+      ime.style.outline = '2px solid lime';
+    });
     ime.addEventListener('focusout', () => {
+      ime.style.outline = 'none';
       setTimeout(() => _dbg('[ime] BLURRED → activeElement=' + (document.activeElement && document.activeElement.id || document.activeElement && document.activeElement.tagName)), 0);
     });
     ime.addEventListener('input', (ev) => {

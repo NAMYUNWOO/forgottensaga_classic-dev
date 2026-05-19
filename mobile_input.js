@@ -174,10 +174,18 @@ const MobileInput = (() => {
         ime.value = DUMMY;
         return;
       }
-      // ASCII 영문 / space 등은 SDL2 keydown handler 가 처리 (input element 의
-      // keydown 도 bubble 로 SDL2 에 도달). 우리는 dummy 복원만.
-      //
-      // 한국어 등 composition 결과는 위 compositionend 에서 forwardChar 호출됨.
+      // 모든 환경에서 input event 의 char 를 forwardChar — 모바일 가상 키보드는
+      // keydown 발생 안 함 + iOS Safari fallback 도 동일 path. PC 의 영문 keydown
+      // 은 SDL2 가 받는데 input event 의 forwardChar 와 중복 호출 — love.textinput
+      // 이 2 번 호출됨. 단 charcreate 의 textinput buffer 가 그것만 append 하면
+      // 가시적 버그. 우리 charcreate.lua 는 textinput 으로 char 추가 → PC 에서 영문
+      // 두 번 입력 가능. (분리 처리 추후 검토.)
+      const data = ev.data;
+      if (data) {
+        for (const ch of data) {
+          if (ch !== DUMMY) forwardChar(ch);
+        }
+      }
       ime.value = DUMMY;
     });
     // textbox blur 시 imeBtn active state 해제
@@ -189,14 +197,31 @@ const MobileInput = (() => {
     // PC: mobile-ime 항상 focus 유지 → Windows 한/영 키 OS IME 활성, 자연스러운
     // 한국어 입력. 다른 input (save panel 등) focus 시는 빼앗지 않음.
     if (_isPCEnv) {
-      // 초기 focus — page load 이후 약간 지연시켜 다른 init code 와 race 회피.
-      setTimeout(() => { try { ime.focus(); } catch (e) {} }, 100);
+      function ensureFocus() {
+        try { ime.focus(); } catch (e) {}
+      }
+      // 즉시 + 다단계 재시도 — splash / audio prompt / game load 등 단계별
+      // 다른 element 가 focus 가져갈 수 있음.
+      ensureFocus();
+      setTimeout(ensureFocus, 100);
+      setTimeout(ensureFocus, 500);
+      setTimeout(ensureFocus, 2000);
+      // blur 시 복귀 — 다른 input/textarea 가 활성이면 양보
       ime.addEventListener('blur', () => {
         setTimeout(() => {
           const ae = document.activeElement;
-          // body / canvas / 없음 일 때만 복귀 (save panel input 등은 그대로 둠)
           if (!ae || ae === document.body || (ae.tagName === 'CANVAS')) {
-            try { ime.focus(); } catch (e) {}
+            ensureFocus();
+          }
+        }, 0);
+      });
+      // 사용자가 canvas / 빈 영역 click 시 focus 복귀 (브라우저 user-gesture 정책
+      // 우회 — 첫 click 후 focus 보장).
+      document.addEventListener('click', (e) => {
+        setTimeout(() => {
+          const ae = document.activeElement;
+          if (!ae || ae === document.body || ae.tagName === 'CANVAS') {
+            ensureFocus();
           }
         }, 0);
       });

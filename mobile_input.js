@@ -218,29 +218,45 @@ const MobileInput = (() => {
     // PC: 항상 focus 유지. visible-to-OS pattern + pointer-events: none 이라
     // canvas / UI click 영향 없음. JS focus() 만으로 IME context 활성.
     if (_isPCEnv) {
-      const ensureFocus = () => { try { ime.focus(); } catch (e) {} };
-      ensureFocus();
-      // splash / audio prompt 후 단계별 재시도
-      setTimeout(ensureFocus, 500);
-      setTimeout(ensureFocus, 2000);
-      // blur 시 복귀 — 다른 input/textarea 가 활성이면 양보
+      const ensureFocus = (reason) => {
+        try {
+          ime.focus();
+          _dbg('[ime] ensureFocus (' + reason + ') activeEl=' + (document.activeElement && document.activeElement.id || document.activeElement && document.activeElement.tagName));
+        } catch (e) {}
+      };
+      ensureFocus('init');
+      setTimeout(() => ensureFocus('init+500'), 500);
+      setTimeout(() => ensureFocus('init+2000'), 2000);
+
+      // 모든 mouse / touch / keyboard event 후 focus 복귀 시도 — input/textarea/
+      // button/select 가 focus 면 양보 (그 element 의 정상 동작 보장).
+      const refocusIfFree = (reason) => {
+        const ae = document.activeElement;
+        if (!ae || ae === ime) return;
+        const tag = ae.tagName;
+        // 사용자 input element 는 양보 — save panel 의 textbox 등
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+        // BUTTON click 직후엔 button 이 focus — 잠시 후 복귀
+        if (tag === 'BUTTON' || (ae.closest && ae.closest('button'))) {
+          setTimeout(() => ensureFocus(reason + '-after-button'), 100);
+          return;
+        }
+        ensureFocus(reason);
+      };
+
       ime.addEventListener('blur', () => {
-        setTimeout(() => {
-          const ae = document.activeElement;
-          if (!ae || ae === document.body || ae.tagName === 'CANVAS') {
-            ensureFocus();
-          }
-        }, 0);
+        setTimeout(() => refocusIfFree('blur'), 0);
       });
-      // 첫 user click 후 focus 보장 (브라우저 user-gesture 정책)
+      document.addEventListener('mousedown', (e) => {
+        setTimeout(() => refocusIfFree('mousedown:' + (e.target && e.target.tagName)), 0);
+      });
       document.addEventListener('click', () => {
-        setTimeout(() => {
-          const ae = document.activeElement;
-          if (!ae || ae === document.body || ae.tagName === 'CANVAS') {
-            ensureFocus();
-          }
-        }, 0);
+        setTimeout(() => refocusIfFree('click'), 0);
       });
+      // 첫 keydown 시도 — focus 못 받았으면 그 시점에 복귀 (한/영 키 직전 대비)
+      document.addEventListener('keydown', () => {
+        if (document.activeElement !== ime) refocusIfFree('keydown');
+      }, true);
     }
 
     // 모바일: 키보드 밖 터치 → blur → 가상 키보드 닫힘 (기존 btn-ime path)

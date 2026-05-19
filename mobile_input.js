@@ -107,27 +107,28 @@ const MobileInput = (() => {
           return;
         } catch (e) { /* fall through */ }
       }
-      // 3순위: 광범위 InputEvent dispatch (iOS Safari fallback — 기존 npm love.js 호환)
-      const canvas = document.getElementById('canvas') || window;
-      const targets = [canvas, document, window];
+      // 3순위: InputEvent dispatch (iOS Safari fallback — 기존 npm love.js 호환).
+      // 단일 dispatch + bubbles: true 로 중첩 호출 방지.
       try {
         const ev = new InputEvent('textinput', { data: ch, bubbles: true });
-        for (const t of targets) { try { t.dispatchEvent(ev); } catch (e) {} }
+        document.dispatchEvent(ev);
         if (!_fwdMethodLogged) {
           _fwdMethodLogged = true;
-          _dbg('[fwd] using inputEvent-broad (custom love.js 미적용?)');
+          _dbg('[fwd] using inputEvent (custom love.js 미적용?)');
         }
       } catch (e) {}
     }
     function forwardBackspace() {
-      const canvas = document.getElementById('canvas') || window;
-      const targets = [canvas, document, window];
+      // 단일 dispatch + bubbles: true → SDL2 listener (document/window 어디든) 1번
+      // 호출. 이전 multi-target dispatch (canvas + document + window) 은 bubble
+      // 과 중첩되어 SDL2 가 2번 받음 → 한국어 syllable update 시 이전 syllable 도
+      // 지워지는 덮어쓰기 버그 원인.
       for (const type of ['keydown', 'keyup']) {
         const ev = new KeyboardEvent(type, {
           key: 'Backspace', code: 'Backspace', keyCode: 8, which: 8,
           bubbles: true, cancelable: true,
         });
-        for (const t of targets) { try { t.dispatchEvent(ev); } catch (e) {} }
+        try { document.dispatchEvent(ev); } catch (e) {}
       }
     }
 

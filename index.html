@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <!-- COOP/COEP for SharedArrayBuffer (love.js normal mode 요구). -->
-    <script src="coi-serviceworker.js?v=20260819144712"></script>
+    <script src="coi-serviceworker.js?v=20260819160802"></script>
     <meta charset="utf-8">
     <!-- Cache 차단 — 새 deploy 즉시 사용자에게 fresh HTML 전달.
          CDN max-age 600s 의존 X. 매 진입 시 fresh fetch → 새 ?v= cache busting hash
@@ -14,10 +14,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <title>포가튼사가</title>
-    <link rel="icon" type="image/png" href="favicon.png?v=20260819144712">
-    <link rel="stylesheet" type="text/css" href="theme/love.css?v=20260819144712">
-    <link rel="stylesheet" type="text/css" href="mobile_input.css?v=20260819144712">
-    <link rel="stylesheet" type="text/css" href="save_controls.css?v=20260819144712">
+    <link rel="icon" type="image/png" href="favicon.png?v=20260819160802">
+    <link rel="stylesheet" type="text/css" href="theme/love.css?v=20260819160802">
+    <link rel="stylesheet" type="text/css" href="mobile_input.css?v=20260819160802">
+    <link rel="stylesheet" type="text/css" href="save_controls.css?v=20260819160802">
     <style>
       html, body {
         margin: 0; padding: 0;
@@ -143,9 +143,12 @@
         50%      { box-shadow: 0 8px 28px rgba(0, 0, 0, 0.6), 0 0 0 14px rgba(255, 213, 102, 0); }
       }
 
-      /* === native-touch (엔진 내장 터치 입력, fosa_engine) === */
-      body.native-touch #mobile-input .joystick,
-      body.native-touch #mobile-input .actions { display: none !important; }
+      /* === native-touch (엔진 내장 터치 입력, fosa_engine) ===
+       * 게임 밖 컨트롤러: nipplejs 조이스틱 대신 D-pad (상/좌하우) + esc/space/enter 키패드
+       * (사용자 요청 2026-08-19: 메뉴 UX 는 방향키/Esc/Enter/Space 가 편함). 캔버스 안
+       * 터치 (tap-to-walk, 항목 탭, 스와이프) 는 그대로 공존. */
+      body.native-touch #mobile-input .joystick { display: none !important; }
+      body.native-touch #mobile-input .dpad { display: grid; }
       body.native-touch #canvas {
         touch-action: none;
         -webkit-user-select: none; user-select: none;
@@ -153,13 +156,14 @@
       }
       @media (pointer: coarse), (max-width: 1024px) {
         body.native-touch .game-wrap { padding-top: 6px; }
+        /* 하단: D-pad/키패드 (14+128) + 컨트롤 row (40) + 여백 */
         body.native-touch #canvas {
           max-width: 100vw;
-          max-height: calc(100vh - 66px);
-          max-height: calc(100dvh - 66px);
+          max-height: calc(100vh - 220px);
+          max-height: calc(100dvh - 220px);
         }
         body.native-touch .top-right {
-          top: auto; bottom: 8px; left: 8px; right: 8px;
+          top: auto; bottom: 156px; left: 8px; right: 8px;
         }
       }
     </style>
@@ -279,6 +283,14 @@
       <div id="mobile-input">
         <!-- 좌하단 조이스틱: nipplejs 가 자체 base/knob element 추가 (zone 으로 사용). -->
         <div class="joystick" id="joystick"></div>
+        <!-- 좌하단 D-pad (상 / 좌 하 우) — native-touch (fosa_engine) 빌드에서 조이스틱 대신 표시.
+             keydown/keyup 을 canvas 로 dispatch (홀드 시 반복). -->
+        <div class="dpad" id="dpad">
+          <button class="btn dbtn up"    data-key="up"    aria-label="위">▲</button>
+          <button class="btn dbtn left"  data-key="left"  aria-label="왼쪽">◀</button>
+          <button class="btn dbtn down"  data-key="down"  aria-label="아래">▼</button>
+          <button class="btn dbtn right" data-key="right" aria-label="오른쪽">▶</button>
+        </div>
 
         <!-- 우하단 액션: esc 위, space-enter 좌우. -->
         <div class="actions">
@@ -885,8 +897,8 @@
 
       var applicationLoad = function(e) { Love(Module); };
     </script>
-    <script type="text/javascript" src="nipplejs.min.js?v=20260819144712"></script>
-    <script type="text/javascript" src="mobile_input.js?v=20260819144712"></script>
+    <script type="text/javascript" src="nipplejs.min.js?v=20260819160802"></script>
+    <script type="text/javascript" src="mobile_input.js?v=20260819160802"></script>
     <script type="text/javascript">
       // 비-Chromium 브라우저 안내. UA 검사: Chrome/CriOS 면 OK, Edg/OPR/SamsungBrowser
       // 같은 Chromium 변형도 OK 처리 (love.js 호환성 비슷). Firefox/Safari/iOS Safari 만 안내.
@@ -906,8 +918,8 @@
         } catch (e) {}
       })();
     </script>
-    <script type="text/javascript" src="save_controls.js?v=20260819144712"></script>
-    <script type="text/javascript" src="game.js?v=20260819144712"></script>
-    <script async type="text/javascript" src="love.js?v=20260819144712" onload="applicationLoad(this)"></script>
+    <script type="text/javascript" src="save_controls.js?v=20260819160802"></script>
+    <script type="text/javascript" src="game.js?v=20260819160802"></script>
+    <script async type="text/javascript" src="love.js?v=20260819160802" onload="applicationLoad(this)"></script>
   </body>
 </html>

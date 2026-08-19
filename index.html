@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <!-- COOP/COEP for SharedArrayBuffer (love.js normal mode 요구). -->
-    <script src="coi-serviceworker.js?v=20260819131620"></script>
+    <script src="coi-serviceworker.js?v=20260819134342"></script>
     <meta charset="utf-8">
     <!-- Cache 차단 — 새 deploy 즉시 사용자에게 fresh HTML 전달.
          CDN max-age 600s 의존 X. 매 진입 시 fresh fetch → 새 ?v= cache busting hash
@@ -14,10 +14,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <title>포가튼사가</title>
-    <link rel="icon" type="image/png" href="favicon.png?v=20260819131620">
-    <link rel="stylesheet" type="text/css" href="theme/love.css?v=20260819131620">
-    <link rel="stylesheet" type="text/css" href="mobile_input.css?v=20260819131620">
-    <link rel="stylesheet" type="text/css" href="save_controls.css?v=20260819131620">
+    <link rel="icon" type="image/png" href="favicon.png?v=20260819134342">
+    <link rel="stylesheet" type="text/css" href="theme/love.css?v=20260819134342">
+    <link rel="stylesheet" type="text/css" href="mobile_input.css?v=20260819134342">
+    <link rel="stylesheet" type="text/css" href="save_controls.css?v=20260819134342">
     <style>
       html, body {
         margin: 0; padding: 0;
@@ -534,6 +534,38 @@
         // cookie blocked / privacy mode 등에서 SecurityError throw → emscripten
         // dependency loading 차단 방지. 어떤 throw 든 silent.
         try {
+          // 배포용 시작 세이브 버전 (build_dist.sh 가 DIST_SAVES_DIR 빌드에서 주입) 이
+          // 바뀌면 브라우저에 남은 업로드 슬롯 (localStorage/sessionStorage/IDB) 을 1회
+          // 비우고 이번 부팅은 inject 생략 → 번들 saga00~04 가 슬롯에 보임 (Lua 쪽은
+          // main.lua 가 IDBFS 의 슬롯 파일을 같은 버전 기준으로 1회 제거).
+          try {
+            var dv = window.__DIST_SAVES_VER;
+            if (dv) {
+              var seenVer = null;
+              try { seenVer = localStorage.getItem('fosa_dist_saves_ver'); } catch (e0) {}
+              if (seenVer !== dv) {
+                for (var cs = 0; cs <= 5; cs++) {
+                  try { localStorage.removeItem('love2d_upload_slot_' + cs); } catch (e1) {}
+                }
+                try { sessionStorage.removeItem('love2d_pending_uploads'); } catch (e2) {}
+                try {
+                  var dreq = indexedDB.open('love2d_user_saves', 1);
+                  dreq.onsuccess = function(ev) {
+                    var ddb = ev.target.result;
+                    try {
+                      if (ddb.objectStoreNames.contains('saves')) {
+                        ddb.transaction(['saves'], 'readwrite').objectStore('saves').clear();
+                      }
+                    } catch (e3) {}
+                    setTimeout(function() { try { ddb.close(); } catch (e4) {} }, 500);
+                  };
+                } catch (e5) {}
+                try { localStorage.setItem('fosa_dist_saves_ver', dv); } catch (e6) {}
+                console.log('[preRun] dist saves ver ' + dv + ' — 브라우저 업로드 슬롯 초기화, inject 생략');
+                return;
+              }
+            }
+          } catch (eDv) {}
           var pending = idbPending || [];
           try {
             if (typeof sessionStorage !== 'undefined') {
@@ -847,8 +879,8 @@
 
       var applicationLoad = function(e) { Love(Module); };
     </script>
-    <script type="text/javascript" src="nipplejs.min.js?v=20260819131620"></script>
-    <script type="text/javascript" src="mobile_input.js?v=20260819131620"></script>
+    <script type="text/javascript" src="nipplejs.min.js?v=20260819134342"></script>
+    <script type="text/javascript" src="mobile_input.js?v=20260819134342"></script>
     <script type="text/javascript">
       // 비-Chromium 브라우저 안내. UA 검사: Chrome/CriOS 면 OK, Edg/OPR/SamsungBrowser
       // 같은 Chromium 변형도 OK 처리 (love.js 호환성 비슷). Firefox/Safari/iOS Safari 만 안내.
@@ -868,8 +900,8 @@
         } catch (e) {}
       })();
     </script>
-    <script type="text/javascript" src="save_controls.js?v=20260819131620"></script>
-    <script type="text/javascript" src="game.js?v=20260819131620"></script>
-    <script async type="text/javascript" src="love.js?v=20260819131620" onload="applicationLoad(this)"></script>
+    <script type="text/javascript" src="save_controls.js?v=20260819134342"></script>
+    <script type="text/javascript" src="game.js?v=20260819134342"></script>
+    <script async type="text/javascript" src="love.js?v=20260819134342" onload="applicationLoad(this)"></script>
   </body>
 </html>

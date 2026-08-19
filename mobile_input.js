@@ -21,6 +21,8 @@ const MobileInput = (() => {
     space: { key: ' ',          code: 'Space',      keyCode: 32 },
     enter: { key: 'Enter',      code: 'Enter',      keyCode: 13 },
     esc:   { key: 'Escape',     code: 'Escape',     keyCode: 27 },
+    d:     { key: 'd',          code: 'KeyD',       keyCode: 68 },   // 던전 탐지 (DETECT)
+    u:     { key: 'u',          code: 'KeyU',       keyCode: 85 },   // 던전 해제 (UNLOCK)
   };
 
   function dispatchKey(target, type, k) {

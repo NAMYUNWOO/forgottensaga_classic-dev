@@ -110,9 +110,6 @@
     font-size: 14px;
     display: flex; align-items: center; justify-content: center;
 }
-#mobile-input .actions .row.extra { display: none; }   /* native-touch 빌드에서만 (patch) */
-#mobile-input .actions .row.extra .btn { width: 78px; height: 40px; font-size: 12px;
-    background: rgba(90, 110, 70, 0.6); }
 #mobile-input .actions .esc   { background: rgba(160, 80, 80, 0.6); }
 #mobile-input .actions .space { background: rgba(80, 140, 80, 0.6); }
 #mobile-input .actions .enter { background: rgba(80, 110, 160, 0.6); }

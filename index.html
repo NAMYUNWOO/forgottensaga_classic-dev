@@ -2,7 +2,7 @@
 <html lang="ko">
   <head>
     <!-- COOP/COEP for SharedArrayBuffer (love.js normal mode 요구). -->
-    <script src="coi-serviceworker.js?v=20260819174820"></script>
+    <script src="coi-serviceworker.js?v=20260819185918"></script>
     <meta charset="utf-8">
     <!-- Cache 차단 — 새 deploy 즉시 사용자에게 fresh HTML 전달.
          CDN max-age 600s 의존 X. 매 진입 시 fresh fetch → 새 ?v= cache busting hash
@@ -14,10 +14,10 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <title>포가튼사가</title>
-    <link rel="icon" type="image/png" href="favicon.png?v=20260819174820">
-    <link rel="stylesheet" type="text/css" href="theme/love.css?v=20260819174820">
-    <link rel="stylesheet" type="text/css" href="mobile_input.css?v=20260819174820">
-    <link rel="stylesheet" type="text/css" href="save_controls.css?v=20260819174820">
+    <link rel="icon" type="image/png" href="favicon.png?v=20260819185918">
+    <link rel="stylesheet" type="text/css" href="theme/love.css?v=20260819185918">
+    <link rel="stylesheet" type="text/css" href="mobile_input.css?v=20260819185918">
+    <link rel="stylesheet" type="text/css" href="save_controls.css?v=20260819185918">
     <style>
       html, body {
         margin: 0; padding: 0;
@@ -149,7 +149,6 @@
        * 터치 (tap-to-walk, 항목 탭, 스와이프) 는 그대로 공존. */
       body.native-touch #mobile-input .joystick { display: none !important; }
       body.native-touch #mobile-input .dpad { display: grid; }
-      body.native-touch #mobile-input .actions .row.extra { display: flex; }
       body.native-touch #canvas {
         touch-action: none;
         -webkit-user-select: none; user-select: none;
@@ -161,8 +160,8 @@
          * (키보드/전체화면/사운드/설정) 맨 아래. (사용자 2026-08-19) */
         body.native-touch #canvas {
           max-width: 100vw;
-          max-height: calc(100vh - 262px);
-          max-height: calc(100dvh - 262px);
+          max-height: calc(100vh - 220px);
+          max-height: calc(100dvh - 220px);
         }
         body.native-touch #mobile-input .dpad,
         body.native-touch #mobile-input .actions { bottom: 62px; }
@@ -304,11 +303,6 @@
           <div class="row bottom">
             <button class="btn space" data-key="space">space</button>
             <button class="btn enter" data-key="enter">enter</button>
-          </div>
-          <!-- 던전 탐지(D)/해제(U) — native-touch 빌드에서만 표시 (CSS) -->
-          <div class="row extra">
-            <button class="btn dkey" data-key="d">탐지 D</button>
-            <button class="btn ukey" data-key="u">해제 U</button>
           </div>
         </div>
 
@@ -906,8 +900,8 @@
 
       var applicationLoad = function(e) { Love(Module); };
     </script>
-    <script type="text/javascript" src="nipplejs.min.js?v=20260819174820"></script>
-    <script type="text/javascript" src="mobile_input.js?v=20260819174820"></script>
+    <script type="text/javascript" src="nipplejs.min.js?v=20260819185918"></script>
+    <script type="text/javascript" src="mobile_input.js?v=20260819185918"></script>
     <script type="text/javascript">
       // 비-Chromium 브라우저 안내. UA 검사: Chrome/CriOS 면 OK, Edg/OPR/SamsungBrowser
       // 같은 Chromium 변형도 OK 처리 (love.js 호환성 비슷). Firefox/Safari/iOS Safari 만 안내.
@@ -927,8 +921,8 @@
         } catch (e) {}
       })();
     </script>
-    <script type="text/javascript" src="save_controls.js?v=20260819174820"></script>
-    <script type="text/javascript" src="game.js?v=20260819174820"></script>
-    <script async type="text/javascript" src="love.js?v=20260819174820" onload="applicationLoad(this)"></script>
+    <script type="text/javascript" src="save_controls.js?v=20260819185918"></script>
+    <script type="text/javascript" src="game.js?v=20260819185918"></script>
+    <script async type="text/javascript" src="love.js?v=20260819185918" onload="applicationLoad(this)"></script>
   </body>
 </html>
